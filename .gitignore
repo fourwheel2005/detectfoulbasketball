@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Runtime outputs
+logs/
+*.log
+basketball_foul_logs.csv
+
+# Replay / raw media outputs
+*.mp4
+*.mov
+
+# Local datasets and processed artifacts
+dataset/
+dataset_processed/
+dataset_processed.zip
+
+# Training datasets / generated outputs
+trainmodel/Basketball_Dataset/
+trainmodel/plots/
+
+# Model checkpoints: keep only the runtime model used by main.py
+trainmodel/*.pt
+!trainmodel/best3.pt
+
