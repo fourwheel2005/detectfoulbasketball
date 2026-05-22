@@ -104,6 +104,7 @@ class TravelingDetector:
     LOST_HOLDING_GRACE_FRAMES = 20  # กัน ball/holding detection หายชั่วคราว
     ANKLE_VIS_MIN = 0.50  # visibility ขั้นต่ำของ ankle
     POSSESSION_CONFIRM_FRAMES = 2  # ต้องถือบอลต่อเนื่องเล็กน้อยก่อนเริ่มนับก้าว
+    HELD_BALL_PAUSE_FRAMES = 12
 
     def __init__(self):
         self.steps: int = 0
@@ -120,15 +121,38 @@ class TravelingDetector:
         self.is_holding_prev: bool = False
         self._lost_holding_frames: int = self.LOST_HOLDING_GRACE_FRAMES
         self._holding_confirm_frames: int = 0
+        self._held_ball_pause_left: int = 0
 
     def check(self, landmarks_px, mp_pose, is_holding, shoulder_width, frame_h,
-              dribble_event: bool = False):
+              dribble_event: bool = False, ball_motion=None, fps: float = 0.0,
+              held_ball_candidate: bool = False):
         """
         ตรวจจับ Traveling
 
         Returns: (is_violation: bool, message: str)
         """
         self._frame_n += 1
+
+        fps = float(fps or 0.0)
+        if fps > 0:
+            gather_frames = max(4, int(round(fps * 0.35)))
+            cooldown_frames = max(3, int(round(fps * 0.22)))
+            lost_grace_frames = max(6, int(round(fps * 0.65)))
+            held_pause_frames = max(4, int(round(fps * 0.45)))
+        else:
+            gather_frames = self.GATHER_FRAMES
+            cooldown_frames = self.STEP_COOLDOWN_FRAMES
+            lost_grace_frames = self.LOST_HOLDING_GRACE_FRAMES
+            held_pause_frames = self.HELD_BALL_PAUSE_FRAMES
+
+        if held_ball_candidate:
+            self._held_ball_pause_left = max(self._held_ball_pause_left, held_pause_frames)
+
+        if self._held_ball_pause_left > 0:
+            self._held_ball_pause_left -= 1
+            self._step_l.reset()
+            self._step_r.reset()
+            return False, f"Steps: {self.steps} [held-ball pause]"
 
         l_ankle = landmarks_px.get(mp_pose.PoseLandmark.LEFT_ANKLE.value)
         r_ankle = landmarks_px.get(mp_pose.PoseLandmark.RIGHT_ANKLE.value)
@@ -152,7 +176,8 @@ class TravelingDetector:
 
         # ถ้าลูกเด้งกลับขึ้นชัดเจน แปลว่ากำลัง dribble อยู่จริง
         # ให้คง possession state ไว้ แต่ไม่เอา ankle movement เฟรมนี้ไปนับก้าว
-        if dribble_event:
+        ball_in_grace = bool(getattr(ball_motion, "in_lost_grace", False))
+        if dribble_event or ball_in_grace:
             self._gather_left = max(self._gather_left, 1)
             self._step_l.reset()
             self._step_r.reset()
@@ -163,7 +188,8 @@ class TravelingDetector:
                     self._holding_confirm_frames + 1,
                     self.POSSESSION_CONFIRM_FRAMES,
                 )
-            return False, f"Steps: {self.steps} [dribble th={lift_threshold:.1f}]"
+            reason = "dribble" if dribble_event else "ball grace"
+            return False, f"Steps: {self.steps} [{reason} th={lift_threshold:.1f}]"
 
         # ── Possession grace: ball/holding อาจหายชั่วคราวจาก occlusion ──
         if is_holding:
@@ -180,9 +206,9 @@ class TravelingDetector:
         else:
             self._holding_confirm_frames = 0
             self._lost_holding_frames += 1
-            if self._lost_holding_frames < self.LOST_HOLDING_GRACE_FRAMES:
-                self._step_l.update(l_y, lift_threshold, self.STEP_COOLDOWN_FRAMES)
-                self._step_r.update(r_y, lift_threshold, self.STEP_COOLDOWN_FRAMES)
+            if self._lost_holding_frames < lost_grace_frames:
+                self._step_l.update(l_y, lift_threshold, cooldown_frames)
+                self._step_r.update(r_y, lift_threshold, cooldown_frames)
                 return False, f"Steps: {self.steps} [holding grace]"
             else:
                 self.steps = 0
@@ -195,8 +221,8 @@ class TravelingDetector:
                 return False, f"Steps: {self.steps}"
 
         if not possession_confirmed:
-            self._step_l.update(l_y, lift_threshold, self.STEP_COOLDOWN_FRAMES)
-            self._step_r.update(r_y, lift_threshold, self.STEP_COOLDOWN_FRAMES)
+            self._step_l.update(l_y, lift_threshold, cooldown_frames)
+            self._step_r.update(r_y, lift_threshold, cooldown_frames)
             return False, (
                 f"Steps: {self.steps} [possession confirm "
                 f"{self._holding_confirm_frames}/{self.POSSESSION_CONFIRM_FRAMES}]"
@@ -205,7 +231,7 @@ class TravelingDetector:
         # ── Gather Step: Reset เมื่อเพิ่งหยิบบอลจริง หลังหมด grace ──
         if is_holding and (not self.is_holding_prev or possession_started):
             self.steps = 0
-            self._gather_left = self.GATHER_FRAMES
+            self._gather_left = gather_frames
             self._step_l.reset()
             self._step_r.reset()
             self._last_step_frame = -10
@@ -219,13 +245,13 @@ class TravelingDetector:
         # ── Gather Period: อัปเดต Kalman แต่ไม่นับก้าว ──
         if self._gather_left > 0:
             self._gather_left -= 1
-            self._step_l.update(l_y, lift_threshold, self.STEP_COOLDOWN_FRAMES)
-            self._step_r.update(r_y, lift_threshold, self.STEP_COOLDOWN_FRAMES)
+            self._step_l.update(l_y, lift_threshold, cooldown_frames)
+            self._step_r.update(r_y, lift_threshold, cooldown_frames)
             return False, f"Steps: {self.steps} [gather {self._gather_left} th={lift_threshold:.1f}]"
 
         # ── นับก้าวจริง ──
-        step_l = self._step_l.update(l_y, lift_threshold, self.STEP_COOLDOWN_FRAMES)
-        step_r = self._step_r.update(r_y, lift_threshold, self.STEP_COOLDOWN_FRAMES)
+        step_l = self._step_l.update(l_y, lift_threshold, cooldown_frames)
+        step_r = self._step_r.update(r_y, lift_threshold, cooldown_frames)
 
         if step_l:
             # Jump stop check: ถ้า 2 เท้าลงพร้อมกัน ≤ JSYNC_FRAMES → นับ 1 ก้าว

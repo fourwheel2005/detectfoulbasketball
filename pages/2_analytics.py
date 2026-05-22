@@ -1,13 +1,11 @@
 """
-pages/2_analytics.py — Full Analytics Dashboard
-================================================
-สถิติ Foul แบบครบ: KPI Cards, Charts, Table, Export
+pages/2_analytics.py — Analytics Summary
+========================================
+สรุป KPI และ QA metrics สำหรับระบบตรวจจับฟาวล์
 """
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 from pathlib import Path
 from datetime import datetime
 import uuid
@@ -55,28 +53,6 @@ hr{border-color:var(--border)!important;margin:1.4rem 0!important;}
 </style>
 """, unsafe_allow_html=True)
 
-# ── Plotly dark theme ─────────────────────────────────────────────────────
-PLOTLY_LAYOUT = dict(
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(248,250,252,0.8)",
-    font=dict(family="Inter", color="#334155"),
-    title_font=dict(family="Outfit", size=15, color="#0F172A"),
-    legend=dict(bgcolor="rgba(255,255,255,0.9)", bordercolor="#E2E8F0", borderwidth=1),
-    margin=dict(l=10, r=10, t=40, b=10),
-    xaxis=dict(gridcolor="#F1F5F9", linecolor="#E2E8F0", tickfont=dict(color="#64748B")),
-    yaxis=dict(gridcolor="#F1F5F9", linecolor="#E2E8F0", tickfont=dict(color="#64748B")),
-)
-
-FOUL_COLORS = {
-    "PUSH FOUL":      "#F97316",
-    "ILLEGAL HANDS":  "#EF4444",
-    "DOUBLE DRIBBLE": "#F59E0B",
-    "TRAVELING":      "#8B5CF6",
-    "CARRYING":       "#06B6D4",
-    "GOALTENDING":    "#EC4899",
-    "HELD BALL":      "#10B981",
-}
-
 ACTIVE_RULES = [
     "DOUBLE DRIBBLE",
     "TRAVELING",
@@ -116,10 +92,16 @@ def load_event_data():
         return pd.DataFrame(columns=[
             "Event_ID", "Date_Time", "Session_ID", "Frame_Index",
             "Player_ID", "Foul_Type", "Replay_Path", "Camera_ID",
-            "Pipeline_Tag", "Hand_Refinement_Enabled",
+            "Pipeline_Tag", "Hand_Refinement_Enabled", "Confidence",
+            "Rule_Reason", "Pose_Score", "Hand_Score", "Foot_Score",
+            "Ball_Velocity", "Rim_Reliable",
         ])
     df = pd.read_csv(EVENT_FILE)
-    for col in ["Pipeline_Tag", "Hand_Refinement_Enabled"]:
+    for col in [
+        "Pipeline_Tag", "Hand_Refinement_Enabled", "Confidence",
+        "Rule_Reason", "Pose_Score", "Hand_Score", "Foot_Score",
+        "Ball_Velocity", "Rim_Reliable",
+    ]:
         if col not in df.columns:
             df[col] = ""
     if "Date_Time" in df.columns:
@@ -203,7 +185,7 @@ def rule_status(foul_label: str) -> str:
 #  UI LAYOUT
 # ═════════════════════════════════════════════════════════════════════════
 
-st.markdown('<div class="page-title">📊 Analytics Dashboard</div>', unsafe_allow_html=True)
+st.markdown('<div class="page-title">📊 Analytics Summary</div>', unsafe_allow_html=True)
 st.markdown('<div class="page-subtitle">วิเคราะห์สถิติการทำฟาวล์จากระบบ AI Referee · อัปเดตทุก 5 วินาที</div>', unsafe_allow_html=True)
 
 # ── Load Data ─────────────────────────────────────────────────────────────
@@ -505,156 +487,3 @@ else:
     if phase_rows:
         st.markdown("##### Before / After by Pipeline Tag")
         st.dataframe(pd.DataFrame(phase_rows), use_container_width=True, hide_index=True)
-
-st.markdown("---")
-
-# ── Row 1: Bar Chart + Pie Chart ──────────────────────────────────────────
-chart_col1, chart_col2 = st.columns([3, 2], gap="large")
-
-with chart_col1:
-    st.markdown('<div class="section-label">📊 Fouls by Type</div>', unsafe_allow_html=True)
-
-    foul_counts = df["Foul_Label"].value_counts().reset_index()
-    foul_counts.columns = ["Foul Type", "Count"]
-    color_seq = [FOUL_COLORS.get(ft, "#FF6B00") for ft in foul_counts["Foul Type"]]
-
-    fig_bar = go.Figure(go.Bar(
-        x=foul_counts["Foul Type"],
-        y=foul_counts["Count"],
-        marker=dict(
-            color=color_seq,
-            line=dict(color="rgba(255,255,255,0.1)", width=1),
-        ),
-        hovertemplate="<b>%{x}</b><br>Count: %{y}<extra></extra>",
-        text=foul_counts["Count"],
-        textposition="outside",
-        textfont=dict(color="#F0F0F8", size=13),
-    ))
-    fig_bar.update_layout(**PLOTLY_LAYOUT, title="จำนวน Foul แต่ละประเภท")
-    fig_bar.update_yaxes(title_text="จำนวนครั้ง")
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-with chart_col2:
-    st.markdown('<div class="section-label"> Foul Distribution</div>', unsafe_allow_html=True)
-
-    fig_pie = go.Figure(go.Pie(
-        labels=foul_counts["Foul Type"],
-        values=foul_counts["Count"],
-        marker=dict(colors=color_seq, line=dict(color="#0A0A0F", width=2)),
-        hole=0.4,
-        hovertemplate="<b>%{label}</b><br>%{value} ครั้ง (%{percent})<extra></extra>",
-        textfont=dict(size=12),
-    ))
-    fig_pie.update_layout(
-        **{**PLOTLY_LAYOUT, "showlegend": True},
-        title="สัดส่วน Foul",
-        annotations=[dict(text="Foul<br>Types", x=0.5, y=0.5, font_size=14, showarrow=False, font_color="#8888AA")],
-    )
-    st.plotly_chart(fig_pie, use_container_width=True)
-
-st.markdown("---")
-
-# ── Row 2: Timeline Chart ─────────────────────────────────────────────────
-st.markdown('<div class="section-label">📈 Foul Timeline</div>', unsafe_allow_html=True)
-
-# Group by minute + foul label
-df_time = df.copy()
-df_time["Minute"] = df_time["Date_Time"].dt.floor("1min")
-timeline = df_time.groupby(["Minute", "Foul_Label"]).size().reset_index(name="Count")
-
-if not timeline.empty:
-    fig_timeline = px.line(
-        timeline,
-        x="Minute",
-        y="Count",
-        color="Foul_Label",
-        color_discrete_map=FOUL_COLORS,
-        markers=True,
-        labels={"Minute": "เวลา", "Count": "จำนวน Foul", "Foul_Label": "ประเภท"},
-    )
-    fig_timeline.update_traces(line=dict(width=2.5), marker=dict(size=7))
-    fig_timeline.update_layout(**PLOTLY_LAYOUT, title="Foul ตามช่วงเวลา (ทุก 1 นาที)")
-    st.plotly_chart(fig_timeline, use_container_width=True)
-
-st.markdown("---")
-
-# ── Row 3: Player Comparison + Hourly Heatmap ────────────────────────────
-player_col, heat_col = st.columns([3, 2], gap="large")
-
-with player_col:
-    st.markdown('<div class="section-label">👥 Player Comparison</div>', unsafe_allow_html=True)
-
-    player_foul = (
-        df.groupby(["Player_ID", "Foul_Label"])
-        .size()
-        .reset_index(name="Count")
-    )
-
-    fig_player = px.bar(
-        player_foul,
-        x="Player_ID",
-        y="Count",
-        color="Foul_Label",
-        color_discrete_map=FOUL_COLORS,
-        barmode="stack",
-        labels={"Player_ID": "Player", "Count": "จำนวน Foul", "Foul_Label": "ประเภท"},
-        text_auto=True,
-    )
-    fig_player.update_layout(**PLOTLY_LAYOUT, title="Foul แยกตามผู้เล่น")
-    fig_player.update_traces(textfont=dict(size=10), textposition="inside")
-    st.plotly_chart(fig_player, use_container_width=True)
-
-with heat_col:
-    st.markdown('<div class="section-label">⏰ Fouls by Hour</div>', unsafe_allow_html=True)
-
-    hourly = df.groupby("Hour").size().reset_index(name="Count")
-
-    fig_hour = go.Figure(go.Bar(
-        x=hourly["Hour"],
-        y=hourly["Count"],
-        marker=dict(
-            color=hourly["Count"],
-            colorscale=[[0, "#1A1A26"], [0.5, "#CC5500"], [1, "#FF6B00"]],
-            showscale=False,
-            line=dict(color="rgba(255,255,255,0.08)", width=1),
-        ),
-        hovertemplate="ชั่วโมง %{x}:00<br>%{y} Fouls<extra></extra>",
-        text=hourly["Count"],
-        textposition="outside",
-        textfont=dict(color="#F0F0F8"),
-    ))
-    fig_hour.update_layout(**PLOTLY_LAYOUT, title="Foul แต่ละชั่วโมงของวัน")
-    fig_hour.update_xaxes(title_text="ชั่วโมง (0-23)", tickmode="linear", dtick=2)
-    fig_hour.update_yaxes(title_text="จำนวน Foul")
-    st.plotly_chart(fig_hour, use_container_width=True)
-
-st.markdown("---")
-
-# ── Row 4: Log Table ──────────────────────────────────────────────────────
-st.markdown('<div class="section-label">📋 Foul Log (Raw Data)</div>', unsafe_allow_html=True)
-
-table_col, filter_col = st.columns([5, 1])
-with filter_col:
-    sort_by = st.selectbox("Sort by", ["Newest", "Oldest"], label_visibility="collapsed")
-
-display_df = df[["Date_Time", "Player_ID", "Foul_Label", "Rule_Status", "Foul_Type"]].copy()
-display_df.columns = ["Date & Time", "Player", "Foul Type", "Rule Status", "Raw Detail"]
-display_df["Date & Time"] = display_df["Date & Time"].dt.strftime("%Y-%m-%d %H:%M:%S")
-
-if sort_by == "Newest":
-    display_df = display_df.sort_values("Date & Time", ascending=False)
-else:
-    display_df = display_df.sort_values("Date & Time", ascending=True)
-
-st.dataframe(
-    display_df.reset_index(drop=True),
-    use_container_width=True,
-    height=350,
-    column_config={
-        "Foul Type": st.column_config.TextColumn("Foul Type", width="medium"),
-        "Rule Status": st.column_config.TextColumn("Rule Status", width="small"),
-        "Raw Detail": st.column_config.TextColumn("Detail", width="large"),
-    },
-)
-
-st.caption(f"แสดง {len(display_df):,} รายการ (filtered จาก {len(df_raw):,} รายการทั้งหมด)")

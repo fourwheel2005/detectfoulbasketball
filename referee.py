@@ -13,6 +13,8 @@ from utils import (
     get_dist,
     AccuracyTracker,
     BallMotionTracker,
+    FoulDecision,
+    RuleEvidence,
     evaluate_pose_quality,
 )
 from fouls.double_dribble import DoubleDribbleDetector
@@ -108,23 +110,26 @@ class BasketballRef:
         self._latest_ball_motion: dict = {}
         self.accuracy           = AccuracyTracker()
         self._rim_y_px          = None  # อัปเดตผ่าน set_rim_y()
+        self._rim_reliable      = False
 
-    def set_rim_y(self, rim_y_px: int | None, rim_x_range=None):
+    def set_rim_y(self, rim_y_px: int | None, rim_x_range=None, rim_reliable: bool = False):
         """
         อัปเดตตำแหน่ง Y ของห่วงบาส (pixel) ให้กับ GoaltendingDetector ทุก Player
         เรียกจาก main.py เมื่อ YOLO ตรวจเจอ Rim ใหม่แต่ละเฟรม
         """
         self._rim_y_px = rim_y_px
+        self._rim_reliable = bool(rim_reliable)
         for detectors in self._players.values():
             if "gt" in detectors:
                 detectors["gt"].rim_y_px = rim_y_px
                 detectors["gt"].rim_x_range = rim_x_range
+                detectors["gt"].rim_reliable = bool(rim_reliable)
 
     # ─── Public API ───────────────────────────────────
 
    # ไฟล์ referee.py (ตัดมาเฉพาะส่วนฟังก์ชัน process เพื่ออัปเดต)
     def process(self, p_id, landmarks_px, mp_pose, ball_box, frame_w, frame_h,
-                hand_landmarks_px=None):
+                hand_landmarks_px=None, fps: float = 0.0):
         detectors = self._get_detectors(p_id)
         violations = []
         info_texts = []
@@ -181,6 +186,25 @@ class BasketballRef:
         self._latest_ball_motion[p_id] = ball_motion
         self._latest_landmarks[p_id] = landmarks_px
         self._latest_hand_landmarks[p_id] = hand_landmarks_px
+        ball_in_flight = (
+            ball_center is not None and
+            not is_holding and
+            not ball_motion.in_lost_grace and
+            ball_motion.velocity > max(shoulder_width * 0.06, 6.0)
+        )
+
+        evidence = RuleEvidence(
+            player_id=p_id,
+            ball_center=ball_center,
+            ball_motion=ball_motion,
+            pose_quality=pose_quality,
+            is_holding=is_holding,
+            shoulder_width=shoulder_width,
+            rim_reliable=self._rim_reliable,
+            hand_refinement_used=bool(hand_landmarks_px),
+            ball_in_flight=ball_in_flight,
+            fps=float(fps or 0.0),
+        )
 
         # --- Check Rules ---
         held_ball_candidate = False
@@ -190,8 +214,19 @@ class BasketballRef:
             is_dd, msg_dd = detectors["dd"].check(
                 landmarks_px, mp_pose, ball_center,
                 hand_landmarks_px=hand_landmarks_px,
+                ball_motion=ball_motion,
+                evidence=evidence,
             )
-            if is_dd: violations.append(msg_dd)
+            if is_dd:
+                violations.append(FoulDecision(
+                    msg_dd,
+                    confidence=0.82,
+                    reason=(
+                        "state=holding_then_dribble "
+                        f"ball_v={ball_motion.velocity:.1f} handQ={pose_quality.hand_score:.2f}"
+                    ),
+                    ball_velocity=ball_motion.velocity,
+                ))
         else:
             info_texts.append(f"PoseQ hand low: {pose_quality.percent('hand_score')}%")
 
@@ -206,6 +241,7 @@ class BasketballRef:
         elif ball_center is not None:
             info_texts.append("HeldBall skip: no nearby opponent")
 
+        pair_owner = opponent_id is None or p_id < opponent_id
         if pose_quality.hand_score >= self.JUMP_BALL_HAND_VIS_MIN and opponent_hand_ok and core_pose_ok:
             is_jb, msg_jb = detectors["jb"].check(
                 landmarks_px, mp_pose, opponent_lm,
@@ -214,11 +250,25 @@ class BasketballRef:
                 hand_landmarks_px=hand_landmarks_px,
                 opponent_hand_landmarks_px=self._latest_hand_landmarks.get(opponent_id, []),
             )
-            if is_jb:
+            if is_jb and pair_owner:
                 held_ball_candidate = True
-                violations.append(msg_jb)
+                evidence.held_ball_candidate = True
+                violations.append(FoulDecision(
+                    msg_jb,
+                    confidence=0.86,
+                    reason=(
+                        "both_players_on_ball + ball_stable "
+                        f"ball_v={ball_motion.velocity:.1f} handQ={pose_quality.hand_score:.2f}"
+                    ),
+                    ball_velocity=ball_motion.velocity,
+                ))
+            elif is_jb:
+                held_ball_candidate = True
+                evidence.held_ball_candidate = True
+                info_texts.append("HeldBall pair confirmed by opponent")
             elif msg_jb:
                 held_ball_candidate = msg_jb.startswith("HeldBall candidate")
+                evidence.held_ball_candidate = held_ball_candidate
                 info_texts.append(msg_jb)
         elif ball_center is not None and opponent_lm is not None:
             info_texts.append(
@@ -232,8 +282,20 @@ class BasketballRef:
             is_tr, msg_tr = detectors["tr"].check(
                 landmarks_px, mp_pose, is_holding, shoulder_width, frame_h,
                 dribble_event=ball_motion.dribble_event,
+                ball_motion=ball_motion,
+                fps=fps,
+                held_ball_candidate=held_ball_candidate,
             )
-            if is_tr: violations.append(msg_tr)
+            if is_tr:
+                violations.append(FoulDecision(
+                    msg_tr,
+                    confidence=0.80,
+                    reason=(
+                        f"{msg_tr}; possession=1 dribble={int(ball_motion.dribble_event)} "
+                        f"footQ={pose_quality.foot_score:.2f}"
+                    ),
+                    ball_velocity=ball_motion.velocity,
+                ))
             elif "Steps" in msg_tr: info_texts.append(msg_tr)
         else:
             info_texts.append(f"PoseQ foot low: {pose_quality.percent('foot_score')}%")
@@ -243,8 +305,19 @@ class BasketballRef:
             is_ca, msg_ca = detectors["ca"].check(
                 landmarks_px, mp_pose, is_holding, shoulder_width, ball_center,
                 hand_landmarks_px=hand_landmarks_px,
+                ball_motion=ball_motion,
+                fps=fps,
             )
-            if is_ca: violations.append(msg_ca)
+            if is_ca:
+                violations.append(FoulDecision(
+                    msg_ca,
+                    confidence=0.78,
+                    reason=(
+                        "palm_up + ball_above_hand + ball_rest "
+                        f"ball_v={ball_motion.velocity:.1f} hand_refine={int(bool(hand_landmarks_px))}"
+                    ),
+                    ball_velocity=ball_motion.velocity,
+                ))
             elif msg_ca: info_texts.append(msg_ca)
 
         # Goaltending (ตรวจวิถีลูกและมือขณะกำลังลงตะกร้า)
@@ -254,8 +327,21 @@ class BasketballRef:
                 pt = landmarks_px.get(wrist_lm.value)
                 if pt:
                     hands_pos.append((pt[0], pt[1]))
-            is_gt, msg_gt = detectors["gt"].check(ball_center, hands_pos, frame_h)
-            if is_gt: violations.append(msg_gt)
+            is_gt, msg_gt = detectors["gt"].check(
+                ball_center, hands_pos, frame_h,
+                rim_reliable=self._rim_reliable,
+                ball_in_flight=ball_in_flight,
+            )
+            if is_gt:
+                violations.append(FoulDecision(
+                    msg_gt,
+                    confidence=0.84,
+                    reason=(
+                        "rim_reliable + ball_in_flight + above_rim + downward + hand_near_ball "
+                        f"ball_v={ball_motion.velocity:.1f}"
+                    ),
+                    ball_velocity=ball_motion.velocity,
+                ))
             elif msg_gt: info_texts.append(msg_gt)
 
         return violations, info_texts

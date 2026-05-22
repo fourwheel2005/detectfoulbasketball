@@ -167,18 +167,23 @@ def load_recent_fouls(n: int = 20):
 
 def load_foul_events():
     """โหลด event log ใหม่ที่ผูก foul กับ replay path"""
+    columns = [
+        "Event_ID", "Date_Time", "Session_ID", "Frame_Index",
+        "Player_ID", "Foul_Type", "Replay_Path", "Camera_ID",
+        "Pipeline_Tag", "Hand_Refinement_Enabled", "Confidence",
+        "Rule_Reason", "Pose_Score", "Hand_Score", "Foot_Score",
+        "Ball_Velocity", "Rim_Reliable",
+    ]
     if not EVENT_FILE.exists():
-        return pd.DataFrame(columns=[
-            "Event_ID", "Date_Time", "Session_ID", "Frame_Index",
-            "Player_ID", "Foul_Type", "Replay_Path", "Camera_ID",
-        ])
+        return pd.DataFrame(columns=columns)
     try:
-        return pd.read_csv(EVENT_FILE)
+        df = pd.read_csv(EVENT_FILE)
+        for col in columns:
+            if col not in df.columns:
+                df[col] = ""
+        return df
     except Exception:
-        return pd.DataFrame(columns=[
-            "Event_ID", "Date_Time", "Session_ID", "Frame_Index",
-            "Player_ID", "Foul_Type", "Replay_Path", "Camera_ID",
-        ])
+        return pd.DataFrame(columns=columns)
 
 
 def load_review_labels():
@@ -551,7 +556,17 @@ with replay_col:
                             default_label = str(latest.get("Human_Label", default_label))
                             default_note = str(latest.get("Reviewer_Note", ""))
 
-                        st.caption(f"{event_id} · {event.get('Player_ID', '?')} · {foul_short_name(predicted)}")
+                        conf = event.get("Confidence", "")
+                        reason = event.get("Rule_Reason", "")
+                        conf_text = ""
+                        try:
+                            if str(conf).strip() not in ("", "nan"):
+                                conf_text = f" · conf {float(conf) * 100:.0f}%"
+                        except (TypeError, ValueError):
+                            conf_text = ""
+                        st.caption(f"{event_id} · {event.get('Player_ID', '?')} · {foul_short_name(predicted)}{conf_text}")
+                        if str(reason).strip() not in ("", "nan"):
+                            st.caption(f"Reason: {str(reason)[:160]}")
                         status = st.selectbox(
                             "Review Status",
                             ["Unreviewed", "Correct", "False Positive", "Wrong Rule", "Unclear"],
@@ -574,17 +589,3 @@ with replay_col:
                             save_review_label(event_id, video_abs, predicted, status, human_label, note)
                             st.success("บันทึก review แล้ว")
                             st.rerun()
-
-# ── Bottom: System Info Banner ────────────────────────────────────────────
-st.markdown("---")
-st.markdown("""
-<div class="ui-card" style="display:flex; align-items:center; gap:2rem; flex-wrap:wrap; padding:1rem 1.5rem;">
-    <div style="font-size:1.5rem;">💡</div>
-    <div>
-        <div style="font-weight:700; margin-bottom:0.2rem;">วิธีใช้งาน</div>
-        <div style="color:#8888AA; font-size:0.98rem;">
-            1. เลือก Camera Source → 2. กด <strong style="color:#FF6B00;">▶ Start System</strong> → 3. ระบบเปิดหน้าต่าง OpenCV → 4. เล่นบาสให้ AI ตรวจ → 5. Foul จะแสดงที่นี่ auto-refresh ทุก 2 วินาที
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)

@@ -247,7 +247,7 @@ st.markdown("""
     .foul-player { color: var(--primary-dark); font-weight: 700; min-width: 80px; }
     .foul-type   { color: var(--text-body); font-weight: 600; }
 
-    /* ── Rule Cards (System Info) ── */
+    /* ── Rule Cards ── */
     .rule-card {
         background: var(--bg-card);
         border: 1px solid var(--border);
@@ -402,23 +402,20 @@ st.markdown("""
     <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
         <span style="background:#FFF7ED;color:#EA580C;border:1.5px solid #FED7AA;border-radius:99px;padding:5px 14px;font-size:0.82rem;font-weight:700;">⚡ Real-time Detection</span>
         <span style="background:#ECFDF5;color:#059669;border:1.5px solid #A7F3D0;border-radius:99px;padding:5px 14px;font-size:0.82rem;font-weight:700;">🎥 Auto Replay</span>
-        <span style="background:#EFF6FF;color:#2563EB;border:1.5px solid #BFDBFE;border-radius:99px;padding:5px 14px;font-size:0.82rem;font-weight:700;">📊 Analytics Dashboard</span>
         <span style="background:#F5F3FF;color:#7C3AED;border:1.5px solid #DDD6FE;border-radius:99px;padding:5px 14px;font-size:0.82rem;font-weight:700;">✅ QA Review</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ── Navigation Cards ──────────────────────────────────────────────────────
-col1, col2, col3, col4 = st.columns(4)
+col1, col2 = st.columns(2)
 
 nav_cards = [
     ("col1", "🎥", "#FFF7ED", "#FED7AA", "#EA580C", "Live Demo", "เปิด/ปิดระบบ · ดู Foul แบบ Real-time · เล่น Replay"),
-    ("col2", "📊", "#EFF6FF", "#BFDBFE", "#2563EB", "Analytics", "สถิติ Foul · Precision/Recall/F1 · Export ข้อมูล"),
-    ("col3", "✅", "#ECFDF5", "#A7F3D0", "#059669", "QA Review", "รีวิว replay ทีละหน้า · บันทึก Human Label · ลดคลิปหลุด"),
-    ("col4", "ℹ️", "#F5F3FF", "#DDD6FE", "#7C3AED", "System Info", "สถาปัตยกรรม · กฎ Foul รุ่นปัจจุบัน · Tech Stack"),
+    ("col2", "✅", "#ECFDF5", "#A7F3D0", "#059669", "QA Review", "รีวิว replay ทีละหน้า · บันทึก Human Label · ลดคลิปหลุด"),
 ]
 
-for (col_id, icon, bg, border, color, title, desc), col in zip(nav_cards, [col1, col2, col3, col4]):
+for (col_id, icon, bg, border, color, title, desc), col in zip(nav_cards, [col1, col2]):
     with col:
         st.markdown(f"""
         <div style="

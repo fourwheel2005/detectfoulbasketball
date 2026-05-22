@@ -324,6 +324,35 @@ class BallMotionTracker:
         self._lost_frames = 0
 
 
+@dataclass
+class RuleEvidence:
+    """หลักฐานกลางต่อผู้เล่น/เฟรม เพื่อให้ทุก rule ใช้ signal ชุดเดียวกัน."""
+    player_id: int
+    ball_center: tuple | None
+    ball_motion: BallMotionState
+    pose_quality: object
+    is_holding: bool
+    shoulder_width: float
+    rim_reliable: bool = False
+    hand_refinement_used: bool = False
+    ball_in_flight: bool = False
+    fps: float = 0.0
+    held_ball_candidate: bool = False
+
+
+@dataclass
+class FoulDecision:
+    """ผลตัดสินแบบ structured พร้อม confidence/reason สำหรับ logging และ QA."""
+    foul_type: str
+    confidence: float = 0.0
+    reason: str = ""
+    debug_info: str = ""
+    ball_velocity: float = 0.0
+
+    def __str__(self) -> str:
+        return self.foul_type
+
+
 # ─────────────────────────────────────────────────────
 #  PoseQuality — ประเมินคุณภาพ pose แยกตาม rule
 # ─────────────────────────────────────────────────────
@@ -467,6 +496,13 @@ class FoulEventLogger:
         "Camera_ID",
         "Pipeline_Tag",
         "Hand_Refinement_Enabled",
+        "Confidence",
+        "Rule_Reason",
+        "Pose_Score",
+        "Hand_Score",
+        "Foot_Score",
+        "Ball_Velocity",
+        "Rim_Reliable",
     ]
 
     def __init__(self, filename: str = "logs/foul_events.csv"):
@@ -490,9 +526,24 @@ class FoulEventLogger:
         camera_id: int | str = "",
         pipeline_tag: str = "",
         hand_refinement_enabled: bool | str = "",
+        confidence: float | str = "",
+        rule_reason: str = "",
+        pose_score: float | str = "",
+        hand_score: float | str = "",
+        foot_score: float | str = "",
+        ball_velocity: float | str = "",
+        rim_reliable: bool | str = "",
     ) -> str:
         event_id = uuid.uuid4().hex[:12]
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        def _fmt(value):
+            if value == "":
+                return ""
+            try:
+                return round(float(value), 3)
+            except (TypeError, ValueError):
+                return value
+
         self._write_row([
             event_id,
             ts,
@@ -504,6 +555,13 @@ class FoulEventLogger:
             camera_id,
             pipeline_tag,
             int(bool(hand_refinement_enabled)) if hand_refinement_enabled != "" else "",
+            _fmt(confidence),
+            rule_reason,
+            _fmt(pose_score),
+            _fmt(hand_score),
+            _fmt(foot_score),
+            _fmt(ball_velocity),
+            int(bool(rim_reliable)) if rim_reliable != "" else "",
         ])
         return event_id
 

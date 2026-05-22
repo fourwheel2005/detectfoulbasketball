@@ -23,7 +23,8 @@ class CarryingDetector:
 
     Y_BUFFER_RATIO  = 0.12  # สัดส่วนของ shoulder_width ที่ข้อมือต้องต่ำกว่านิ้ว
     Y_BUFFER_MIN    = 10    # ค่าขั้นต่ำ (px) ป้องกันคนตัวเล็กมากจนค่าเป็น 0
-    CONFIRM_FRAMES  = 4     # ต้องเกิดต่อเนื่องกี่เฟรมถึง Confirm
+    CONFIRM_FRAMES  = 4     # fallback เมื่อไม่รู้ FPS
+    CONFIRM_SECONDS = 0.28  # ต้องค้าง ~280ms เพื่อกัน dribble ปกติถูกจับเป็น carry
     MISS_GRACE_FRAMES = 2   # ยอมให้หลุดสั้นๆ จาก pose/ball jitter โดยไม่ reset ทันที
     COOLDOWN_FRAMES = 25    # กันแจ้งซ้ำต่อเนื่องหลัง Confirm
 
@@ -41,7 +42,7 @@ class CarryingDetector:
 
     def check(self, landmarks_px: dict, mp_pose, is_holding: bool,
               shoulder_width: float = 100.0, ball_center=None,
-              hand_landmarks_px=None) -> tuple:
+              hand_landmarks_px=None, ball_motion=None, fps: float = 0.0) -> tuple:
         """
         Parameters:
             landmarks_px  : dict {landmark_id: (x, y)} — Pixel
@@ -62,16 +63,23 @@ class CarryingDetector:
             self._prev_ball_center = None
             return False, "Carry: no ball"
 
+        confirm_frames = self.CONFIRM_FRAMES
+        if fps and fps > 0:
+            confirm_frames = max(3, int(round(float(fps) * self.CONFIRM_SECONDS)))
+
         # ── ตรวจ Ball Velocity (กฎต้องการ "comes to rest") ──
         ball_rest_threshold = max(
             shoulder_width * self.BALL_REST_RATIO, self.BALL_REST_MIN
         )
-        if self._prev_ball_center is None:
+        if ball_motion is not None and getattr(ball_motion, "detected", False):
+            ball_vel = float(getattr(ball_motion, "velocity", 0.0))
+            ball_is_resting = bool(getattr(ball_motion, "is_still", False)) or ball_vel < ball_rest_threshold
+        elif self._prev_ball_center is None:
             self._prev_ball_center = ball_center
             return False, "Carry: warmup"
-
-        ball_vel = get_dist(ball_center, self._prev_ball_center)
-        ball_is_resting = ball_vel < ball_rest_threshold
+        else:
+            ball_vel = get_dist(ball_center, self._prev_ball_center)
+            ball_is_resting = ball_vel < ball_rest_threshold
         self._prev_ball_center = ball_center
 
         # ── คำนวณ Dynamic Y Buffer ──
@@ -117,7 +125,9 @@ class CarryingDetector:
             points = hand["points"]
             wrist = points.get(0)
             fingertips = [points.get(idx) for idx in (4, 8, 12, 16, 20)]
+            mcps = [points.get(idx) for idx in (5, 9, 13, 17)]
             fingertips = [pt for pt in fingertips if pt is not None]
+            mcps = [pt for pt in mcps if pt is not None]
             if wrist is None or not fingertips:
                 continue
 
@@ -125,7 +135,9 @@ class CarryingDetector:
                 [get_dist(wrist, ball_center)] +
                 [get_dist(pt, ball_center) for pt in fingertips]
             )
-            highest_tip = min(fingertips, key=lambda pt: pt[1])
+            # ใช้ MCP ร่วมกับปลายนิ้วเพื่ออ่านแนวฝ่ามือ: fingertip อย่างเดียวสั่นง่าย
+            orientation_points = fingertips + mcps
+            highest_tip = min(orientation_points, key=lambda pt: pt[1])
             nearest_tip = min(fingertips, key=lambda pt: get_dist(pt, ball_center))
             side = min(
                 (
@@ -184,17 +196,18 @@ class CarryingDetector:
                 self._consecutive = max(0, self._consecutive - 1)
 
         # ต้องเกิดต่อเนื่อง CONFIRM_FRAMES เฟรม
-        if self._consecutive >= self.CONFIRM_FRAMES:
+        if self._consecutive >= confirm_frames:
             self._consecutive = 0
             self._miss_frames = 0
             self._cooldown_left = self.COOLDOWN_FRAMES
-            return True, f"CARRYING ({side})"
+            quality_tag = "Good" if hand_landmarks_px else "Pose"
+            return True, f"CARRYING ({side})({quality_tag})"
 
         return False, (
             f"Carry: side={side} hold={int(is_holding)} near={int(hand_near_ball)} "
             f"palm={int(palm_up)} above={int(ball_above_hand)} "
             f"rest={int(ball_is_resting)} v={ball_vel:.1f}/{ball_rest_threshold:.1f} "
-            f"conf={self._consecutive}/{self.CONFIRM_FRAMES}"
+            f"conf={self._consecutive}/{confirm_frames}"
         )
 
     def _soft_reset(self):

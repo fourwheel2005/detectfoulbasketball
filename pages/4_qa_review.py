@@ -113,12 +113,16 @@ def load_events() -> pd.DataFrame:
         return pd.DataFrame(columns=[
             "Event_ID", "Date_Time", "Session_ID", "Frame_Index",
             "Player_ID", "Foul_Type", "Replay_Path", "Camera_ID",
-            "Pipeline_Tag", "Hand_Refinement_Enabled",
+            "Pipeline_Tag", "Hand_Refinement_Enabled", "Confidence",
+            "Rule_Reason", "Pose_Score", "Hand_Score", "Foot_Score",
+            "Ball_Velocity", "Rim_Reliable",
         ])
     df = pd.read_csv(EVENT_FILE)
     for col in [
         "Event_ID", "Player_ID", "Foul_Type", "Replay_Path", "Camera_ID",
-        "Pipeline_Tag", "Hand_Refinement_Enabled",
+        "Pipeline_Tag", "Hand_Refinement_Enabled", "Confidence",
+        "Rule_Reason", "Pose_Score", "Hand_Score", "Foot_Score",
+        "Ball_Velocity", "Rim_Reliable",
     ]:
         if col not in df.columns:
             df[col] = ""

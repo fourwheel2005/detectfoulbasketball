@@ -55,7 +55,7 @@ class DoubleDribbleDetector:
     BALL_FAST_THRESHOLD = 35  # px/frame — บอลเคลื่อนเร็วมาก = น่าจะถูกส่ง/ชูตแล้ว
 
     def check(self, landmarks_px: dict, mp_pose, ball_center,
-              hand_landmarks_px=None) -> tuple:
+              hand_landmarks_px=None, ball_motion=None, evidence=None) -> tuple:
         """
         ตรวจสอบ Double Dribble ใน 1 เฟรม
 
@@ -77,20 +77,25 @@ class DoubleDribbleDetector:
             return False, f"State: {self.state}"
         self._lost_ball_frames = 0
 
-        # ── Ball Velocity Auto-Reset: ถ้าบอลเคลื่อนเร็วมาก → น่าจะถูกส่ง/ชูต ──
-        ball_vel = 0.0
-        dribble_event = False
-        if self._prev_ball_center is not None:
-            ball_vel = get_dist(ball_center, self._prev_ball_center)
-            delta_y = ball_center[1] - self._prev_ball_center[1]
-            if (
-                self._prev_delta_y is not None
-                and self._prev_delta_y > self.DRIBBLE_BOUNCE_THRESHOLD
-                and delta_y < -self.DRIBBLE_BOUNCE_THRESHOLD
-            ):
-                dribble_event = True
-            self._prev_delta_y = delta_y
-        self._prev_ball_center = ball_center
+        # ใช้ shared BallMotionTracker เป็น truth หลัก เพื่อไม่ให้ rule แต่ละตัวตีความ
+        # dribble event คนละแบบจนเกิด false positive ไม่ตรงกัน
+        if ball_motion is not None and getattr(ball_motion, "detected", False):
+            ball_vel = float(getattr(ball_motion, "velocity", 0.0))
+            dribble_event = bool(getattr(ball_motion, "dribble_event", False))
+        else:
+            ball_vel = 0.0
+            dribble_event = False
+            if self._prev_ball_center is not None:
+                ball_vel = get_dist(ball_center, self._prev_ball_center)
+                delta_y = ball_center[1] - self._prev_ball_center[1]
+                if (
+                    self._prev_delta_y is not None
+                    and self._prev_delta_y > self.DRIBBLE_BOUNCE_THRESHOLD
+                    and delta_y < -self.DRIBBLE_BOUNCE_THRESHOLD
+                ):
+                    dribble_event = True
+                self._prev_delta_y = delta_y
+            self._prev_ball_center = ball_center
 
         # ── VIOLATION Auto Reset: ค้างสถานะครบกำหนดแล้ว Reset ──
         if self.state == "VIOLATION":
@@ -126,9 +131,9 @@ class DoubleDribbleDetector:
         holding_one   = holding_right or holding_left
         touching_any   = touching_right or touching_left or min_touch_dist < self.DRIBBLE_THRESHOLD
 
-        if self.state == "HOLDING" and ball_vel > self.BALL_FAST_THRESHOLD and min_dist > self.PASS_RESET_DISTANCE:
+        if self.state == "HOLDING" and ball_vel > self.BALL_FAST_THRESHOLD and min_touch_dist > self.PASS_RESET_DISTANCE:
             self.reset()
-            return False, f"State: {self.state}"
+            return False, "State: IDLE [pass/shot reset]"
 
         # ─── Timeout: ถ้าไม่แตะบอลนานเกิน Threshold → Reset ───
         if not touching_any:
@@ -151,7 +156,13 @@ class DoubleDribbleDetector:
         violation = False
 
         if self.state == "HOLDING":
-            if dribble_event or (touching_any and not holding_confirmed and ball_vel > self.BALL_FAST_THRESHOLD):
+            released_after_hold = (
+                touching_any and
+                not holding_confirmed and
+                ball_vel > self.BALL_FAST_THRESHOLD and
+                min_touch_dist > self.HOLD_THRESHOLD
+            )
+            if dribble_event or released_after_hold:
                 # เคยหยุดเลี้ยงแล้วบอลกลับมาเด้ง/แตะมือเดียวอีกครั้ง = Double Dribble
                 violation = True
                 self.state = "VIOLATION"

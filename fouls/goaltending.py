@@ -8,13 +8,15 @@ class GoaltendingDetector:
         self.MIN_SAMPLES = 6
         self.rim_y_px  = None       # ต้องมาจาก YOLO rim detection เท่านั้น
         self.rim_x_range = None      # (x1, x2) px ถ้าต้องการตรวจ cylinder (optional)
+        self.rim_reliable = False
         self.HAND_BALL_THRESHOLD_PX = 110
         self.RIM_VERTICAL_MARGIN_PX = 25
         self.RIM_MISSING_CLEAR_FRAMES = 12
         self._y_history = deque(maxlen=self.HISTORY_LEN)
         self._rim_missing_frames = 0
 
-    def check(self, ball_center, hands_positions, frame_h, rim_y_px=None):
+    def check(self, ball_center, hands_positions, frame_h, rim_y_px=None,
+              rim_reliable: bool | None = None, ball_in_flight: bool = False):
         """
         hands_positions: list ของ (x, y) ของมือผู้เล่นทุกคนในเฟรม
         rim_y_px: pixel Y ของห่วงบาส
@@ -27,13 +29,21 @@ class GoaltendingDetector:
             self._y_history.clear()
             return False, "GT: no ball"
 
-        # ต้องเห็นห่วงจริงจาก model ก่อนเท่านั้น ไม่ใช้ fallback ในห้อง/ฉากไม่มีห่วง
+        reliable = self.rim_reliable if rim_reliable is None else bool(rim_reliable)
+
+        # ต้องเห็นห่วงจริงและ reliable ก่อนเท่านั้น ไม่ใช้ fallback ในห้อง/ฉากไม่มีห่วง
         rim_y = rim_y_px if rim_y_px is not None else self.rim_y_px
         if rim_y is None:
             self._rim_missing_frames += 1
             if self._rim_missing_frames >= self.RIM_MISSING_CLEAR_FRAMES:
                 self._y_history.clear()
             return False, f"GT: no rim {self._rim_missing_frames}/{self.RIM_MISSING_CLEAR_FRAMES}"
+        if not reliable:
+            self._y_history.clear()
+            return False, "GT skip: rim unreliable"
+        if not ball_in_flight:
+            self._y_history.clear()
+            return False, "GT skip: ball not in flight"
         self._rim_missing_frames = 0
 
         y = ball_center[1]
