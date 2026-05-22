@@ -654,11 +654,12 @@ def render_page_header(title: str, subtitle: str):
 
 
 def render_top_nav():
-    """Render visible page links in the main content area as a fallback navbar."""
+    """Render visible navigation buttons in the main content area."""
     nav_cols = st.columns(len(_NAV_PAGES))
     for col, (label, page, icon) in zip(nav_cols, _NAV_PAGES):
         with col:
-            st.page_link(page, label=label, icon=icon)
+            if st.button(f"{icon} {label}", key=f"top_nav_{page}", use_container_width=True):
+                st.switch_page(page)
     st.markdown("<br>", unsafe_allow_html=True)
 
 

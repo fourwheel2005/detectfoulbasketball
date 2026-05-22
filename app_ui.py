@@ -5,14 +5,7 @@ app_ui.py — AI Basketball Referee: Main Streamlit Entry Point
 """
 
 import streamlit as st
-from ui_theme import inject_global_css, render_sidebar_logo, render_page_header, render_footer
-
-NAV_PAGES = [
-    ("Home", "app_ui.py", "🏠"),
-    ("Live Demo", "pages/1_live_demo.py", "🎥"),
-    ("Analytics Summary", "pages/2_analytics.py", "📊"),
-    ("QA Review", "pages/4_qa_review.py", "✅"),
-]
+from ui_theme import inject_global_css, render_sidebar_nav, render_top_nav, render_footer
 
 # ── Page Config ─────────────────────────────────────────────────────────
 st.set_page_config(
@@ -27,10 +20,7 @@ inject_global_css()
 
 # ── Sidebar ──────────────────────────────────────────────────────────────
 with st.sidebar:
-    render_sidebar_logo()
-    st.markdown("### Navigation")
-    for label, page, icon in NAV_PAGES:
-        st.page_link(page, label=label, icon=icon)
+    render_sidebar_nav()
 
 # ── Hero Section ─────────────────────────────────────────────────────────
 st.markdown("""
@@ -68,17 +58,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Navigation Cards ──────────────────────────────────────────────────────
+# ── Navigation ───────────────────────────────────────────────────────────
 st.markdown("### เลือกหน้าการทำงาน")
-nav1, nav2, nav3 = st.columns(3)
-with nav1:
-    st.page_link("pages/1_live_demo.py", label="เปิด Live Demo", icon="🎥")
-with nav2:
-    st.page_link("pages/2_analytics.py", label="ดู Analytics Summary", icon="📊")
-with nav3:
-    st.page_link("pages/4_qa_review.py", label="ทำ QA Review", icon="✅")
-
-st.markdown("<br>", unsafe_allow_html=True)
+render_top_nav()
 
 col1, col2 = st.columns(2, gap="large")
 
@@ -109,9 +91,11 @@ for col, icon, bg, border, color, title, desc in nav_cards:
         </div>
         """, unsafe_allow_html=True)
         if title == "Live Demo":
-            st.page_link("pages/1_live_demo.py", label="ไปหน้า Live Demo", icon="🎥")
+            if st.button("🎥 ไปหน้า Live Demo", key="home_live_demo", use_container_width=True):
+                st.switch_page("pages/1_live_demo.py")
         elif title == "QA Review":
-            st.page_link("pages/4_qa_review.py", label="ไปหน้า QA Review", icon="✅")
+            if st.button("✅ ไปหน้า QA Review", key="home_qa_review", use_container_width=True):
+                st.switch_page("pages/4_qa_review.py")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
