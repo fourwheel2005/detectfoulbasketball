@@ -187,10 +187,17 @@ _GLOBAL_CSS = """
         background-color: #FFFFFF !important;
     }
 
-    /* ── Hide Streamlit Branding ── */
-    #MainMenu, footer, header { visibility: hidden; }
-    .stDeployButton { display: none; }
+    /* ── Hide Streamlit Branding (keep sidebar toggle working) ── */
+    #MainMenu, footer { visibility: hidden; }
+    .stDeployButton { display: none !important; }
     .viewerBadge_container__1QSob { display: none; }
+    [data-testid="stToolbar"] { display: none !important; }
+    /* Make header bar transparent & minimal — sidebar toggle still works */
+    [data-testid="stHeader"] {
+        background: transparent !important;
+        border: none !important;
+        height: 2.5rem !important;
+    }
 
     /* ── Sidebar ── */
     [data-testid="stSidebar"] {
@@ -207,8 +214,7 @@ _GLOBAL_CSS = """
     [data-testid="stSidebar"] strong {
         color: var(--text-main) !important;
     }
-
-    /* ── Sidebar Nav Links ── */
+    /* ── Sidebar Nav Links (Streamlit default nav + our custom st.page_link nav) ── */
     [data-testid="stSidebarNav"] a,
     [data-testid="stSidebarNav"] a span,
     [data-testid="stSidebarNav"] li,
@@ -644,6 +650,16 @@ def render_page_header(title: str, subtitle: str):
     """Render a styled page title + subtitle."""
     st.markdown(f'<div class="page-title">{title}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="page-subtitle">{subtitle}</div>', unsafe_allow_html=True)
+    render_top_nav()
+
+
+def render_top_nav():
+    """Render visible page links in the main content area as a fallback navbar."""
+    nav_cols = st.columns(len(_NAV_PAGES))
+    for col, (label, page, icon) in zip(nav_cols, _NAV_PAGES):
+        with col:
+            st.page_link(page, label=label, icon=icon)
+    st.markdown("<br>", unsafe_allow_html=True)
 
 
 def render_section_label(icon: str, text: str):
@@ -681,3 +697,20 @@ def render_empty_state(icon: str, message: str):
         <div style="font-size:1.05rem; line-height:1.6;">{message}</div>
     </div>
     """, unsafe_allow_html=True)
+
+
+# ── Navigation pages definition ──
+_NAV_PAGES = [
+    ("Home",               "app_ui.py",             "🏠"),
+    ("Live Demo",          "pages/1_live_demo.py",  "🎥"),
+    ("Analytics Summary",  "pages/2_analytics.py",  "📊"),
+    ("QA Review",          "pages/4_qa_review.py",  "✅"),
+]
+
+
+def render_sidebar_nav():
+    """Render the sidebar logo + navigation links. Call inside `with st.sidebar:` on every page."""
+    render_sidebar_logo()
+    st.markdown("### Navigation")
+    for label, page, icon in _NAV_PAGES:
+        st.page_link(page, label=label, icon=icon)
