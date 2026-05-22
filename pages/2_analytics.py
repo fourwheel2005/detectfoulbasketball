@@ -10,6 +10,19 @@ from pathlib import Path
 from datetime import datetime
 import uuid
 
+from ui_theme import (
+    inject_global_css,
+    render_page_header,
+    render_section_label,
+    render_footer,
+    normalize_foul,
+    rule_status,
+    pct_value,
+    fmt_pct,
+    ACTIVE_RULES,
+    DEPRECATED_RULES,
+)
+
 # ── Page Config ──────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Analytics — AI Referee",
@@ -17,53 +30,8 @@ st.set_page_config(
     layout="wide",
 )
 
-# ── CSS ───────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;600;700;800;900&display=swap');
-:root{--primary:#F97316;--primary-dark:#EA580C;--accent:#FB923C;
-    --bg-page:#F8FAFC;--bg-soft:#F1F5F9;--bg-card:#FFFFFF;--bg-card2:#F8FAFC;
-    --border:#E2E8F0;--border-accent:rgba(249,115,22,0.3);
-    --text-main:#0F172A;--text-body:#334155;--text-sub:#64748B;--text-muted:#94A3B8;
-    --success:#10B981;--danger:#EF4444;--warning:#F59E0B;
-    --shadow-sm:0 1px 3px rgba(0,0,0,0.06);--shadow-md:0 4px 16px rgba(0,0,0,0.08);}
-html,body,[class*="css"],[data-testid="stAppViewContainer"],.stApp{font-family:'Inter',sans-serif!important;background-color:var(--bg-page)!important;color:var(--text-main)!important;font-size:17px!important;}
-#MainMenu,footer,header{visibility:hidden;}.stDeployButton{display:none;}
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#FFFFFF 0%,#FFF7ED 60%,#FFF1E6 100%)!important;border-right:1px solid var(--border)!important;box-shadow:4px 0 20px rgba(0,0,0,0.04)!important;}
-[data-testid="stSidebar"] *{color:var(--text-body)!important;}
-[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3,[data-testid="stSidebar"] strong{color:var(--text-main)!important;}
-[data-testid="stSidebarNav"] a,[data-testid="stSidebarNav"] a span,[data-testid="stSidebarNavItems"] a,[data-testid="stSidebarNavItems"] span,section[data-testid="stSidebar"] a,section[data-testid="stSidebar"] a span,section[data-testid="stSidebar"] a p{color:var(--text-body)!important;font-weight:600!important;text-decoration:none!important;}
-[data-testid="stSidebarNav"] a:hover,[data-testid="stSidebarNavItems"] a:hover,section[data-testid="stSidebar"] a:hover{background:rgba(249,115,22,0.1)!important;color:var(--primary-dark)!important;border-radius:8px!important;}
-[data-testid="stSidebarNav"] a[aria-selected="true"],[data-testid="stSidebarNavItems"] a[aria-selected="true"]{background:rgba(249,115,22,0.15)!important;color:var(--primary-dark)!important;border-radius:8px!important;font-weight:700!important;}
-
-.main .block-container{padding:2.2rem 2.7rem 3.2rem 2.7rem;max-width:1460px;}
-[data-testid="stMetric"]{background:var(--bg-card)!important;border:1px solid var(--border)!important;border-radius:12px!important;padding:1.35rem 1.5rem!important;box-shadow:var(--shadow-sm)!important;transition:transform 0.2s ease,box-shadow 0.2s ease,border-color 0.2s ease!important;}
-[data-testid="stMetric"]:hover{transform:translateY(-3px)!important;box-shadow:var(--shadow-md)!important;border-color:var(--border-accent)!important;}
-[data-testid="stMetricLabel"]{color:var(--text-sub)!important;font-size:0.9rem!important;font-weight:700!important;text-transform:uppercase!important;letter-spacing:0.04em!important;}
-[data-testid="stMetricValue"]{color:var(--primary)!important;font-size:2.25rem!important;font-weight:800!important;}
-.stButton>button{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%)!important;color:white!important;border:none!important;border-radius:8px!important;font-weight:700!important;padding:0.65rem 1.8rem!important;transition:all 0.25s ease!important;box-shadow:0 4px 14px rgba(249,115,22,0.35)!important;}
-.stButton>button:hover{transform:translateY(-2px)!important;box-shadow:0 8px 24px rgba(249,115,22,0.45)!important;}
-.ui-card{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:1.4rem 1.6rem;margin-bottom:1rem;box-shadow:var(--shadow-sm);}
-.page-title{font-family:'Outfit',sans-serif;font-size:2.55rem;font-weight:900;background:linear-gradient(135deg,#EA580C 0%,#F97316 60%,#FB923C 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:0.25rem;line-height:1.15;}
-.page-subtitle{color:var(--text-sub);font-size:1.08rem;margin-bottom:1.7rem;}
-hr{border-color:var(--border)!important;margin:1.4rem 0!important;}
-.stSelectbox>div>div,.stMultiSelect>div>div{background:var(--bg-card)!important;border-color:var(--border)!important;border-radius:8px!important;color:var(--text-main)!important;}
-.section-label{font-size:1.28rem;font-weight:750;color:var(--text-body);margin:1.6rem 0 0.95rem 0;}
-[data-testid="stMarkdownContainer"] p,[data-testid="stMarkdownContainer"] li,label{font-size:1rem!important;line-height:1.55!important;}
-</style>
-""", unsafe_allow_html=True)
-
-ACTIVE_RULES = [
-    "DOUBLE DRIBBLE",
-    "TRAVELING",
-    "CARRYING",
-    "GOALTENDING",
-    "HELD BALL",
-]
-DEPRECATED_RULES = [
-    "PUSH FOUL",
-    "ILLEGAL HANDS",
-]
+# ── Apply Global Theme ──────────────────────────────────────────────────
+inject_global_css()
 
 # ── Data Loading ──────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -151,42 +119,14 @@ def save_missed_foul(human_label: str, pipeline_tag: str, note: str = ""):
     load_review_data.clear()
 
 
-def pct_value(numerator: int, denominator: int):
-    if denominator <= 0:
-        return None
-    return numerator / denominator * 100
-
-
-def fmt_pct(value):
-    return f"{value:.1f}%" if value is not None else "—"
-
-
-def normalize_foul(foul_str: str) -> str:
-    f = str(foul_str).upper()
-    if "PUSH"        in f: return "PUSH FOUL"
-    if "ILLEGAL"     in f: return "ILLEGAL HANDS"
-    if "DOUBLE"      in f: return "DOUBLE DRIBBLE"
-    if "TRAVELING"   in f: return "TRAVELING"
-    if "CARRY"       in f: return "CARRYING"
-    if "GOALTENDING" in f: return "GOALTENDING"
-    if "HELD" in f or "JUMP" in f: return "HELD BALL"
-    return foul_str[:30]
-
-
-def rule_status(foul_label: str) -> str:
-    if foul_label in DEPRECATED_RULES:
-        return "Deprecated"
-    if foul_label in ACTIVE_RULES:
-        return "Active"
-    return "Unknown"
-
-
 # ═════════════════════════════════════════════════════════════════════════
 #  UI LAYOUT
 # ═════════════════════════════════════════════════════════════════════════
 
-st.markdown('<div class="page-title">📊 Analytics Summary</div>', unsafe_allow_html=True)
-st.markdown('<div class="page-subtitle">วิเคราะห์สถิติการทำฟาวล์จากระบบ AI Referee · อัปเดตทุก 5 วินาที</div>', unsafe_allow_html=True)
+render_page_header(
+    "📊 Analytics Summary",
+    "วิเคราะห์สถิติการทำฟาวล์จากระบบ AI Referee · อัปเดตทุก 5 วินาที",
+)
 
 # ── Load Data ─────────────────────────────────────────────────────────────
 df_raw = load_data()
@@ -246,16 +186,14 @@ with st.sidebar:
         date_range = (all_dates[0], all_dates[-1])
 
     st.markdown("---")
-    col_dl1, col_dl2 = st.columns(2)
-    with col_dl1:
-        csv_data = df_raw.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="⬇ Export CSV",
-            data=csv_data,
-            file_name=f"foul_log_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+    csv_data = df_raw.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="⬇ Export CSV",
+        data=csv_data,
+        file_name=f"foul_log_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
 
 # ── Apply Filters ─────────────────────────────────────────────────────────
 df = df_raw.copy()
@@ -280,7 +218,9 @@ if df.empty:
     st.stop()
 
 # ── KPI Cards ─────────────────────────────────────────────────────────────
-k1, k2, k3, k4 = st.columns(4)
+render_section_label("📈", "Overview Metrics")
+
+k1, k2, k3, k4 = st.columns(4, gap="medium")
 
 with k1:
     st.metric("🚨 Total Fouls", f"{len(df):,}")
@@ -296,8 +236,6 @@ with k4:
     unique_players = df["Player_ID"].nunique()
     st.metric("🧑‍🤝‍🧑 Players Detected", unique_players)
 
-st.markdown("---")
-
 deprecated_count = int((df_raw["Rule_Status"] == "Deprecated").sum())
 active_count = int((df_raw["Rule_Status"] == "Active").sum())
 if deprecated_count:
@@ -307,8 +245,10 @@ if deprecated_count:
         "(Push/Illegal Hands ถูกเก็บไว้เป็นประวัติ แต่ไม่รวมในค่าเริ่มต้น)"
     )
 
+st.markdown("---")
+
 # ── QA / Review Accuracy ───────────────────────────────────────────────────
-st.markdown('<div class="section-label">✅ QA Review Accuracy</div>', unsafe_allow_html=True)
+render_section_label("✅", "QA Review Accuracy")
 
 with st.expander("➕ บันทึก Missed Foul (FN)", expanded=False):
     st.caption(
@@ -399,16 +339,18 @@ if precision is not None and recall is not None and (precision + recall) > 0:
 else:
     f1_score = None
 
-q1, q2, q3, q4 = st.columns(4)
-q1.metric("Events Logged", f"{len(qa_df):,}")
-q2.metric("Reviewed Samples", f"{reviewed_total:,}")
-q3.metric("TP / FP / FN", f"{tp_count:,} / {fp_count:,} / {fn_count:,}")
-q4.metric("Accuracy", "—")
+# ── QA Metric Cards ──────────────────────────────────────────────────────
+with st.container():
+    q1, q2, q3, q4 = st.columns(4, gap="medium")
+    q1.metric("Events Logged", f"{len(qa_df):,}")
+    q2.metric("Reviewed Samples", f"{reviewed_total:,}")
+    q3.metric("TP / FP / FN", f"{tp_count:,} / {fp_count:,} / {fn_count:,}")
+    q4.metric("Accuracy", "—")
 
-q5, q6, q7 = st.columns(3)
-q5.metric("Precision", fmt_pct(precision))
-q6.metric("Recall", fmt_pct(recall))
-q7.metric("F1-score", fmt_pct(f1_score))
+    q5, q6, q7 = st.columns(3, gap="medium")
+    q5.metric("Precision", fmt_pct(precision))
+    q6.metric("Recall", fmt_pct(recall))
+    q7.metric("F1-score", fmt_pct(f1_score))
 
 st.caption(
     "สูตรที่ใช้: Precision = TP/(TP+FP), Recall = TP/(TP+FN), "
@@ -417,9 +359,14 @@ st.caption(
     "Accuracy ยังไม่คำนวณ เพราะระบบยังไม่มี TN จาก no-foul sample จริง"
 )
 
+st.markdown("---")
+
+# ── Per-rule Breakdown ────────────────────────────────────────────────────
 if event_raw.empty and missed_df.empty:
     st.info("ยังไม่มี `logs/foul_events.csv` หรือ Missed Foul review จึงยังคำนวณ QA metrics ไม่ได้")
 else:
+    render_section_label("📋", "Per-rule Breakdown")
+
     rule_rows = []
     labels = sorted(set(ACTIVE_RULES) | set(qa_df.get("Foul_Label", pd.Series(dtype=str)).dropna().tolist()))
     for label in labels:
@@ -458,8 +405,9 @@ else:
         })
 
     per_rule = pd.DataFrame(rule_rows)
-    st.dataframe(per_rule, use_container_width=True, height=260)
+    st.dataframe(per_rule, use_container_width=True, height=280, hide_index=True)
 
+    # ── Pipeline Tag Comparison ──────────────────────────────────────────
     phase_rows = []
     phase_labels = sorted(set(qa_df.get("Pipeline_Tag", pd.Series(dtype=str)).dropna().tolist()))
     for phase in phase_labels:
@@ -485,5 +433,9 @@ else:
             "F1_%": round(phase_f1, 1) if phase_f1 is not None else None,
         })
     if phase_rows:
-        st.markdown("##### Before / After by Pipeline Tag")
+        st.markdown("")
+        render_section_label("🔄", "Before / After by Pipeline Tag")
         st.dataframe(pd.DataFrame(phase_rows), use_container_width=True, hide_index=True)
+
+# ── Footer ────────────────────────────────────────────────────────────────
+render_footer()

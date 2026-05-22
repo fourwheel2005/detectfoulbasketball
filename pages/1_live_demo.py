@@ -13,64 +13,33 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-# ── Inherit global CSS from app_ui.py ───────────────────────────────────
+from ui_theme import (
+    inject_global_css,
+    render_page_header,
+    render_section_label,
+    render_empty_state,
+    render_footer,
+    normalize_foul,
+    foul_short_name,
+    rule_status,
+    get_foul_color,
+    pct,
+    bool_status,
+    ACTIVE_RULES,
+    ACTIVE_RULES_SET,
+    DEPRECATED_RULES_SET,
+    REVIEW_COLUMNS,
+)
+
+# ── Page Config ──────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Live Demo — AI Referee",
     page_icon="🎥",
     layout="wide",
 )
 
-# ── Inject CSS (same global styles) ─────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;600;700;800;900&display=swap');
-:root {
-    --primary:#F97316; --primary-dark:#EA580C; --accent:#FB923C; --accent2:#FDBA74;
-    --bg-page:#F8FAFC; --bg-soft:#F1F5F9; --bg-card:#FFFFFF; --bg-card2:#F8FAFC;
-    --border:#E2E8F0; --border-accent:rgba(249,115,22,0.3);
-    --text-main:#0F172A; --text-body:#334155; --text-sub:#64748B; --text-muted:#94A3B8;
-    --success:#10B981; --danger:#EF4444; --warning:#F59E0B;
-    --shadow-sm:0 1px 3px rgba(0,0,0,0.06); --shadow-md:0 4px 16px rgba(0,0,0,0.08);
-}
-html,body,[class*="css"],[data-testid="stAppViewContainer"],.stApp{font-family:'Inter',sans-serif!important;background-color:var(--bg-page)!important;color:var(--text-main)!important;font-size:17px!important;}
-#MainMenu,footer,header{visibility:hidden;} .stDeployButton{display:none;}
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#FFFFFF 0%,#FFF7ED 60%,#FFF1E6 100%)!important;border-right:1px solid var(--border)!important;box-shadow:4px 0 20px rgba(0,0,0,0.04)!important;}
-[data-testid="stSidebar"] *{color:var(--text-body)!important;}
-[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3,[data-testid="stSidebar"] strong{color:var(--text-main)!important;}
-[data-testid="stSidebarNav"] a,[data-testid="stSidebarNav"] a span,[data-testid="stSidebarNavItems"] a,[data-testid="stSidebarNavItems"] span,section[data-testid="stSidebar"] a,section[data-testid="stSidebar"] a span,section[data-testid="stSidebar"] a p{color:var(--text-body)!important;font-weight:600!important;text-decoration:none!important;}
-[data-testid="stSidebarNav"] a:hover,[data-testid="stSidebarNavItems"] a:hover,section[data-testid="stSidebar"] a:hover{background:rgba(249,115,22,0.1)!important;color:var(--primary-dark)!important;border-radius:8px!important;}
-[data-testid="stSidebarNav"] a[aria-selected="true"],[data-testid="stSidebarNavItems"] a[aria-selected="true"]{background:rgba(249,115,22,0.15)!important;color:var(--primary-dark)!important;border-radius:8px!important;font-weight:700!important;}
-
-.main .block-container{padding:2.2rem 2.7rem 3.2rem 2.7rem;max-width:1460px;}
-[data-testid="stMetric"]{background:var(--bg-card)!important;border:1px solid var(--border)!important;border-radius:12px!important;padding:1.35rem 1.5rem!important;box-shadow:var(--shadow-sm)!important;transition:transform 0.2s ease,box-shadow 0.2s ease,border-color 0.2s ease!important;}
-[data-testid="stMetric"]:hover{transform:translateY(-3px)!important;box-shadow:var(--shadow-md)!important;border-color:var(--border-accent)!important;}
-[data-testid="stMetricLabel"]{color:var(--text-sub)!important;font-size:0.9rem!important;font-weight:700!important;text-transform:uppercase!important;letter-spacing:0.04em!important;}
-[data-testid="stMetricValue"]{color:var(--primary)!important;font-size:2.25rem!important;font-weight:800!important;}
-.stButton>button{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%)!important;color:white!important;border:none!important;border-radius:8px!important;font-weight:700!important;font-size:1.05rem!important;padding:0.75rem 1.9rem!important;transition:all 0.25s ease!important;box-shadow:0 4px 14px rgba(249,115,22,0.35)!important;letter-spacing:0.02em!important;}
-.stButton>button:hover{transform:translateY(-2px)!important;box-shadow:0 8px 24px rgba(249,115,22,0.45)!important;}
-.stop-btn>button{background:linear-gradient(135deg,#EF4444 0%,#DC2626 100%)!important;box-shadow:0 4px 14px rgba(239,68,68,0.35)!important;}
-.ui-card{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:1.4rem 1.6rem;margin-bottom:1rem;box-shadow:var(--shadow-sm);transition:transform 0.2s,box-shadow 0.2s,border-color 0.2s;}
-.ui-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);border-color:var(--border-accent);}
-.status-active{display:inline-flex;align-items:center;gap:8px;background:#ECFDF5;color:var(--success);border:1.5px solid #6EE7B7;border-radius:20px;padding:7px 17px;font-weight:700;font-size:1rem;animation:pulse-green 2s ease-in-out infinite;}
-.status-stopped{display:inline-flex;align-items:center;gap:8px;background:var(--bg-soft);color:var(--text-sub);border:1.5px solid var(--border);border-radius:20px;padding:7px 17px;font-weight:700;font-size:1rem;}
-.dot-green{width:9px;height:9px;border-radius:50%;background:var(--success);}
-.dot-gray{width:9px;height:9px;border-radius:50%;background:var(--text-muted);}
-@keyframes pulse-green{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0.35);}50%{box-shadow:0 0 0 7px rgba(16,185,129,0);}}
-.foul-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-radius:8px;margin-bottom:8px;background:#FFF7ED;border-left:4px solid var(--primary);font-size:1rem;transition:background 0.15s,transform 0.15s;}
-.foul-row:hover{background:#FFEDD5;transform:translateX(2px);}
-.foul-time{color:var(--text-sub);font-size:0.92rem;min-width:84px;}
-.foul-player{color:var(--primary-dark);font-weight:700;min-width:80px;}
-.foul-type{color:var(--text-body);font-weight:600;}
-.page-title{font-family:'Outfit',sans-serif;font-size:2.55rem;font-weight:900;background:linear-gradient(135deg,#EA580C 0%,#F97316 60%,#FB923C 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:0.25rem;line-height:1.15;}
-.page-subtitle{color:var(--text-sub);font-size:1.08rem;margin-bottom:1.7rem;}
-hr{border-color:var(--border)!important;margin:1.4rem 0!important;}
-.stSelectbox>div>div,.stTextInput>div>div,.stTextArea>div>div{background:var(--bg-card)!important;border-color:var(--border)!important;border-radius:8px!important;color:var(--text-main)!important;}
-.replay-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:1.15rem 1.3rem;margin-bottom:0.9rem;box-shadow:var(--shadow-sm);}
-.replay-title{font-weight:700;font-size:1.04rem;color:var(--primary-dark);margin-bottom:0.6rem;}
-.foul-badge{display:inline-block;background:#FFF7ED;color:var(--primary);border:1.5px solid #FED7AA;border-radius:6px;padding:4px 10px;font-size:0.88rem;font-weight:700;margin-right:5px;}
-[data-testid="stMarkdownContainer"] p,[data-testid="stMarkdownContainer"] li,label{font-size:1rem!important;line-height:1.55!important;}
-</style>
-""", unsafe_allow_html=True)
+# ── Apply Global Theme ──────────────────────────────────────────────────
+inject_global_css()
 
 # ── Project Root ─────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -80,26 +49,6 @@ REVIEW_FILE  = PROJECT_ROOT / "logs" / "review_labels.csv"
 RUNTIME_STATUS_FILE = PROJECT_ROOT / "logs" / "runtime_status.json"
 REPLAY_DIR   = PROJECT_ROOT / "logs" / "replays"
 MAIN_PY      = PROJECT_ROOT / "main.py"
-REVIEW_COLUMNS = [
-    "Event_ID",
-    "Replay_Path",
-    "Predicted_Rule",
-    "Review_Status",
-    "Human_Label",
-    "Reviewer_Note",
-    "Reviewed_At",
-]
-ACTIVE_RULES = {
-    "DOUBLE DRIBBLE",
-    "TRAVELING",
-    "CARRYING",
-    "GOALTENDING",
-    "HELD BALL",
-}
-DEPRECATED_RULES = {
-    "PUSH FOUL",
-    "ILLEGAL HANDS",
-}
 
 # ── Session State Init ───────────────────────────────────────────────────
 if "process" not in st.session_state:
@@ -240,19 +189,6 @@ def load_session_fouls():
         return pd.DataFrame()
 
 
-def get_foul_color(foul_type: str) -> str:
-    """คืนสีตามประเภท Foul"""
-    foul_type_upper = foul_type.upper()
-    if "PUSH"        in foul_type_upper: return "#FF6B00"
-    if "ILLEGAL"     in foul_type_upper: return "#FF3D57"
-    if "DOUBLE"      in foul_type_upper: return "#FFB347"
-    if "TRAVELING"   in foul_type_upper: return "#7C4DFF"
-    if "CARRY"       in foul_type_upper: return "#00BCD4"
-    if "GOALTENDING" in foul_type_upper: return "#E91E63"
-    if "HELD" in foul_type_upper or "JUMP" in foul_type_upper: return "#00E676"
-    return "#FF6B00"
-
-
 def get_replay_videos():
     """ดึงรายการไฟล์วิดีโอ Replay"""
     if not REPLAY_DIR.exists():
@@ -261,54 +197,34 @@ def get_replay_videos():
     return videos[:10]  # แสดง 10 ล่าสุด
 
 
-def foul_short_name(foul_type: str) -> str:
-    """ชื่อย่อของ Foul"""
-    f = foul_type.upper()
-    if "PUSH"        in f: return "PUSH FOUL"
-    if "ILLEGAL"     in f: return "ILLEGAL HANDS"
-    if "DOUBLE"      in f: return "DOUBLE DRIBBLE"
-    if "TRAVELING"   in f: return "TRAVELING"
-    if "CARRY"       in f: return "CARRYING"
-    if "GOALTENDING" in f: return "GOALTENDING"
-    if "HELD" in f or "JUMP" in f: return "HELD BALL"
-    return foul_type[:20]
-
-
-def rule_status(foul_label: str) -> str:
-    if foul_label in DEPRECATED_RULES:
-        return "Deprecated"
-    if foul_label in ACTIVE_RULES:
-        return "Active"
-    return "Unknown"
-
-
-def pct(value) -> str:
-    try:
-        return f"{float(value) * 100:.0f}%"
-    except Exception:
-        return "—"
-
-
-def bool_status(value) -> str:
-    if value is None:
-        return "—"
-    return "YES" if bool(value) else "NO"
-
-
 # ═════════════════════════════════════════════════════════════════════════
 #  UI LAYOUT
 # ═════════════════════════════════════════════════════════════════════════
 
-st.markdown('<div class="page-title">🎥 Live Demo</div>', unsafe_allow_html=True)
-st.markdown('<div class="page-subtitle">ควบคุมระบบตรวจจับ Foul แบบ Real-time · ดู Foul Alert และ Replay Video</div>', unsafe_allow_html=True)
+render_page_header(
+    "🎥 Live Demo",
+    "ควบคุมระบบตรวจจับ Foul แบบ Real-time · ดู Foul Alert และ Replay Video",
+)
 
 # ── Sync process state ────────────────────────────────────────────────────
 if st.session_state.system_active and not is_process_running():
     st.session_state.system_active = False
     st.session_state.process       = None
 
-# ── Top Row: Status + Controls ────────────────────────────────────────────
-ctrl_col, status_col, cam_col = st.columns([2, 2, 3])
+# ── Top Row: Controls + Status + Camera ───────────────────────────────────
+ctrl_col, status_col, cam_col = st.columns([2, 2, 3], gap="medium")
+
+with ctrl_col:
+    if not st.session_state.system_active:
+        if st.button("▶  Start System", key="btn_start", use_container_width=True):
+            start_system(st.session_state.camera_index)
+            st.rerun()
+    else:
+        st.markdown('<div class="stop-btn">', unsafe_allow_html=True)
+        if st.button("⏹  Stop System", key="btn_stop", use_container_width=True):
+            stop_system()
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 with status_col:
     if st.session_state.system_active:
@@ -343,58 +259,48 @@ with cam_col:
     )
     st.session_state.camera_index = cam_options[selected_cam_label]
 
-with ctrl_col:
-    if not st.session_state.system_active:
-        if st.button("▶  Start System", key="btn_start", use_container_width=True):
-            start_system(st.session_state.camera_index)
-            st.rerun()
-    else:
-        st.markdown('<div class="stop-btn">', unsafe_allow_html=True)
-        if st.button("⏹  Stop System", key="btn_stop", use_container_width=True):
-            stop_system()
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
 st.markdown("---")
 
+# ── Field Test Health ─────────────────────────────────────────────────────
 runtime_status = load_runtime_status()
-st.markdown("### 🧪 Field Test Health")
-health_cols = st.columns(6)
-with health_cols[0]:
-    st.metric("FPS", runtime_status.get("fps", "—"))
-with health_cols[1]:
-    st.metric("Players", runtime_status.get("players_tracked", "—"))
-with health_cols[2]:
-    st.metric("Ball", bool_status(runtime_status.get("ball_detected")))
-with health_cols[3]:
-    st.metric("Rim", bool_status(runtime_status.get("rim_detected")))
-with health_cols[4]:
-    st.metric("Hand Q", pct(runtime_status.get("avg_hand_score")))
-with health_cols[5]:
-    st.metric("Foot Q", pct(runtime_status.get("avg_foot_score")))
+render_section_label("🧪", "Field Test Health")
 
-pose_cols = st.columns(4)
-with pose_cols[0]:
-    st.metric("Pose Q", pct(runtime_status.get("avg_pose_score")))
-with pose_cols[1]:
-    st.metric("Valid Pose", runtime_status.get("pose_players_valid", "—"))
-with pose_cols[2]:
-    st.metric("Low Vis", runtime_status.get("low_vis_players", "—"))
-with pose_cols[3]:
-    st.metric("Frame", runtime_status.get("frame_index", "—"))
+with st.container():
+    row1_cols = st.columns(4, gap="medium")
+    with row1_cols[0]:
+        st.metric("FPS", runtime_status.get("fps", "—"))
+    with row1_cols[1]:
+        st.metric("Players Tracked", runtime_status.get("players_tracked", "—"))
+    with row1_cols[2]:
+        st.metric("Ball Detected", bool_status(runtime_status.get("ball_detected")))
+    with row1_cols[3]:
+        st.metric("Rim Detected", bool_status(runtime_status.get("rim_detected")))
 
-last_updated = runtime_status.get("last_updated")
-if last_updated:
-    st.caption(
-        f"Runtime status updated: {last_updated} · "
-        f"Ball boxes: {runtime_status.get('ball_count', 0)} · "
-        f"Rim boxes: {runtime_status.get('rim_count', 0)}"
-    )
-else:
-    st.info("ยังไม่มี runtime status — กด Start System แล้วรอไม่กี่เฟรมเพื่อเริ่มดู Field Test Health")
+    row2_cols = st.columns(4, gap="medium")
+    with row2_cols[0]:
+        st.metric("Pose Quality", pct(runtime_status.get("avg_pose_score")))
+    with row2_cols[1]:
+        st.metric("Hand Quality", pct(runtime_status.get("avg_hand_score")))
+    with row2_cols[2]:
+        st.metric("Foot Quality", pct(runtime_status.get("avg_foot_score")))
+    with row2_cols[3]:
+        st.metric("Frame Index", runtime_status.get("frame_index", "—"))
+
+    last_updated = runtime_status.get("last_updated")
+    if last_updated:
+        st.caption(
+            f"Runtime status updated: {last_updated} · "
+            f"Pose valid: {runtime_status.get('pose_players_valid', '—')} · "
+            f"Low vis: {runtime_status.get('low_vis_players', '—')} · "
+            f"Ball boxes: {runtime_status.get('ball_count', 0)} · "
+            f"Rim boxes: {runtime_status.get('rim_count', 0)}"
+        )
+    else:
+        st.info("ยังไม่มี runtime status — กด Start System แล้วรอไม่กี่เฟรมเพื่อเริ่มดู Field Test Health")
 
 st.markdown("---")
 
+# ── Toggle deprecated logs ────────────────────────────────────────────────
 show_deprecated_logs = st.toggle(
     "Show deprecated legacy logs",
     value=False,
@@ -410,7 +316,7 @@ if not show_deprecated_logs:
     if not total_log_df.empty and "Rule_Status" in total_log_df.columns:
         total_log_df = total_log_df[total_log_df["Rule_Status"] == "Active"]
 
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+kpi1, kpi2, kpi3, kpi4 = st.columns(4, gap="medium")
 
 with kpi1:
     session_count = len(session_df) if not session_df.empty else 0
@@ -418,7 +324,8 @@ with kpi1:
 
 with kpi2:
     total_count = len(total_log_df) if not total_log_df.empty else 0
-    st.metric("📋 Active Logged Fouls" if not show_deprecated_logs else "📋 Total Logged Fouls", total_count)
+    label = "📋 Active Logged Fouls" if not show_deprecated_logs else "📋 Total Logged Fouls"
+    st.metric(label, total_count)
 
 with kpi3:
     if not session_df.empty and "Foul_Type" in session_df.columns:
@@ -444,7 +351,7 @@ feed_col, replay_col = st.columns([3, 2], gap="large")
 with feed_col:
     feed_header_col, refresh_col = st.columns([4, 1])
     with feed_header_col:
-        st.markdown("### 🚨 Live Foul Alert Feed")
+        render_section_label("🚨", "Live Foul Alert Feed")
     with refresh_col:
         if st.button("🔄", key="manual_refresh", help="Refresh feed"):
             st.rerun()
@@ -454,12 +361,7 @@ with feed_col:
         recent_df = recent_df[recent_df["Rule_Status"] == "Active"]
 
     if recent_df.empty:
-        st.markdown("""
-        <div class="ui-card" style="text-align:center; padding:2.5rem; color:#8888AA;">
-            <div style="font-size:2.5rem; margin-bottom:0.8rem;">🏀</div>
-            <div>ยังไม่มีข้อมูล Foul<br>กด Start System และเล่นบาส!</div>
-        </div>
-        """, unsafe_allow_html=True)
+        render_empty_state("🏀", "ยังไม่มีข้อมูล Foul<br>กด Start System และเล่นบาส!")
     else:
         with st.container(height=520):
             for _, row in recent_df.iterrows():
@@ -488,22 +390,17 @@ with feed_col:
 
 # ── RIGHT: Replay Videos ──────────────────────────────────────────────────
 with replay_col:
-    st.markdown("### 📼 Replay Videos")
+    render_section_label("📼", "Replay Videos")
 
     videos = get_replay_videos()
     event_df = load_foul_events()
     review_df = load_review_labels()
 
     if not videos:
-        st.markdown("""
-        <div class="ui-card" style="text-align:center; padding:2.5rem; color:#8888AA;">
-            <div style="font-size:2.5rem; margin-bottom:0.8rem;">🎬</div>
-            <div>ยังไม่มีวิดีโอ Replay<br>วิดีโอจะถูกบันทึกเมื่อเกิด Foul</div>
-        </div>
-        """, unsafe_allow_html=True)
+        render_empty_state("🎬", "ยังไม่มีวิดีโอ Replay<br>วิดีโอจะถูกบันทึกเมื่อเกิด Foul")
     else:
         for video_path in videos:
-            filename = video_path.stem  # e.g. foul_2026-03-24_15-32_PUSH-FOUL
+            filename = video_path.stem
             parts = filename.split("_")
 
             # Parse foul types from filename
@@ -526,7 +423,7 @@ with replay_col:
             <div class="replay-card">
                 <div class="replay-title">🎬 {mtime.strftime("%Y-%m-%d %H:%M:%S")}</div>
                 <div style="margin-bottom:0.5rem;">{foul_labels if foul_labels else '<span class="foul-badge">FOUL</span>'}</div>
-                <div style="color:#8888AA; font-size:0.92rem;">📁 {size_kb} KB</div>
+                <div style="color:#94A3B8; font-size:0.92rem;">📁 {size_kb} KB</div>
             </div>
             """, unsafe_allow_html=True)
 
