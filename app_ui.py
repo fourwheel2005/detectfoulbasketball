@@ -7,6 +7,13 @@ app_ui.py — AI Basketball Referee: Main Streamlit Entry Point
 import streamlit as st
 from ui_theme import inject_global_css, render_sidebar_logo, render_page_header, render_footer
 
+NAV_PAGES = [
+    ("Home", "app_ui.py", "🏠"),
+    ("Live Demo", "pages/1_live_demo.py", "🎥"),
+    ("Analytics Summary", "pages/2_analytics.py", "📊"),
+    ("QA Review", "pages/4_qa_review.py", "✅"),
+]
+
 # ── Page Config ─────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="🏀 AI Basketball Referee",
@@ -22,6 +29,8 @@ inject_global_css()
 with st.sidebar:
     render_sidebar_logo()
     st.markdown("### Navigation")
+    for label, page, icon in NAV_PAGES:
+        st.page_link(page, label=label, icon=icon)
 
 # ── Hero Section ─────────────────────────────────────────────────────────
 st.markdown("""
@@ -60,6 +69,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Navigation Cards ──────────────────────────────────────────────────────
+st.markdown("### เลือกหน้าการทำงาน")
+nav1, nav2, nav3 = st.columns(3)
+with nav1:
+    st.page_link("pages/1_live_demo.py", label="เปิด Live Demo", icon="🎥")
+with nav2:
+    st.page_link("pages/2_analytics.py", label="ดู Analytics Summary", icon="📊")
+with nav3:
+    st.page_link("pages/4_qa_review.py", label="ทำ QA Review", icon="✅")
+
+st.markdown("<br>", unsafe_allow_html=True)
+
 col1, col2 = st.columns(2, gap="large")
 
 nav_cards = [
@@ -88,6 +108,10 @@ for col, icon, bg, border, color, title, desc in nav_cards:
             <div style="color:#64748B;font-size:0.88rem;line-height:1.55;">{desc}</div>
         </div>
         """, unsafe_allow_html=True)
+        if title == "Live Demo":
+            st.page_link("pages/1_live_demo.py", label="ไปหน้า Live Demo", icon="🎥")
+        elif title == "QA Review":
+            st.page_link("pages/4_qa_review.py", label="ไปหน้า QA Review", icon="✅")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
